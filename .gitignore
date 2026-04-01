@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.map
+.claude/
+/tmp/
+.DS_Store

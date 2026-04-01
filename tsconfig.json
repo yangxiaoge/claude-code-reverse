@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "color-diff-napi": ["./src/native-ts/color-diff/index.ts"]
+    },
+    "types": ["node"]
+  },
+  "include": ["src/**/*", "build.ts", "stubs/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

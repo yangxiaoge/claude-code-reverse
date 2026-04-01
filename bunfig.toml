@@ -1,0 +1,9 @@
+[install]
+# Use exact versions for reproducible installs
+exact = false
+
+[install.scopes]
+# No private registry needed for public packages
+
+[bundle]
+# Default bundle settings (used by bun build)
