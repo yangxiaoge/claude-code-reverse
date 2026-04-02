@@ -7,13 +7,16 @@
 import { build, type BuildConfig } from 'bun'
 import { existsSync, mkdirSync } from 'fs'
 import { chmod } from 'fs/promises'
+import { fileURLToPath } from 'node:url'
+
+// 【终极修复】强制所有反斜杠变为正斜杠，严防 Bun 崩溃
+function toBunWinPath(url: string | URL): string {
+  return fileURLToPath(url).replace(/\\/g, '/')
+}
 
 const VERSION = process.env.VERSION ?? '6.6.66'
 const BUILD_TIME = new Date().toISOString()
 
-// All feature flags disabled for external/open builds.
-// Internal Anthropic features (CHICAGO_MCP, BRIDGE_MODE, DAEMON, etc.)
-// require private packages or internal infrastructure.
 const DISABLED_FEATURES: Record<string, boolean> = {
   ABLATION_BASELINE: false,
   AGENT_MEMORY_SNAPSHOT: false,
@@ -105,7 +108,6 @@ const DISABLED_FEATURES: Record<string, boolean> = {
   WORKFLOW_SCRIPTS: false,
 }
 
-// Build define map: MACRO.* constants and feature() flags
 const define: Record<string, string> = {
   'MACRO.VERSION': JSON.stringify(VERSION),
   'MACRO.BUILD_TIME': JSON.stringify(BUILD_TIME),
@@ -114,12 +116,8 @@ const define: Record<string, string> = {
   'MACRO.NATIVE_PACKAGE_URL': JSON.stringify('https://registry.npmjs.org/@anthropic-ai/claude-code'),
   'MACRO.PACKAGE_URL': JSON.stringify('https://registry.npmjs.org/@anthropic-ai/claude-code'),
   'MACRO.VERSION_CHANGELOG': JSON.stringify(''),
-  // Set production mode to suppress React development warnings
   'process.env.NODE_ENV': JSON.stringify('production'),
 }
-
-// Feature flags are handled via the bun:bundle shim (always returns false)
-// No additional define entries needed for feature()
 
 if (!existsSync('dist')) {
   mkdirSync('dist', { recursive: true })
@@ -136,29 +134,35 @@ const config: BuildConfig = {
   minify: false,
   sourcemap: 'external',
   define,
-  external: [],
-  // Resolve color-diff-napi to the pure TS implementation
-  plugins: [
+  external:[],
+  plugins:[
     {
       name: 'shim-resolver',
       setup(build) {
-        // Redirect color-diff-napi to the pure TS implementation
         build.onResolve({ filter: /^color-diff-napi$/ }, () => ({
-          path: new URL('./src/native-ts/color-diff/index.ts', import.meta.url).pathname,
+          path: toBunWinPath(new URL('./src/native-ts/color-diff/index.ts', import.meta.url)),
         }))
-        // Redirect bun:bundle to our shim (feature() always returns false)
+        
         build.onResolve({ filter: /^bun:bundle$/ }, () => ({
-          path: new URL('./shims/bun-bundle.ts', import.meta.url).pathname,
+          path: toBunWinPath(new URL('./shims/bun-bundle.ts', import.meta.url)),
         }))
-        // Redirect react/compiler-runtime to the installed react-compiler-runtime package (React 18 compat)
+        
         build.onResolve({ filter: /^react\/compiler-runtime$/ }, (args) => ({
-          path: import.meta.resolve('react-compiler-runtime').replace('file://', ''),
+          path: toBunWinPath(import.meta.resolve('react-compiler-runtime')),
         }))
-        // Redirect 'react' imports to our polyfill shim (adds React.use() for React 18)
-        // Skip redirect when the importer is the shim itself to avoid circular imports
-        const reactShimPath = new URL('./shims/react-use-polyfill.ts', import.meta.url).pathname
+        
+        const reactShimPath = toBunWinPath(new URL('./shims/react-use-polyfill.ts', import.meta.url))
+        
+        // 【核心修复】提前算出 node_modules 里面真实的 react 路径，并强制变为正斜杠
+        const realReactPath = toBunWinPath(import.meta.resolve('react'))
+        
         build.onResolve({ filter: /^react$/ }, (args) => {
-          if (args.importer === reactShimPath) return undefined // let it resolve normally
+          const importerPath = args.importer ? args.importer.replace(/\\/g, '/') : ''
+          
+          if (importerPath === reactShimPath) {
+            // 不要 return undefined 让 Bun 自己解析了！直接把修正好的路径塞给它！
+            return { path: realReactPath }
+          }
           return { path: reactShimPath }
         })
       },
